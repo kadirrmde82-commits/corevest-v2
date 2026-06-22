@@ -1,0 +1,294 @@
+import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  TrendingUp, TrendingDown, MousePointerClick,
+  DollarSign, Wallet, Crown, ChevronRight, X, Gift
+} from 'lucide-react';
+import Layout from '../components/Layout';
+import { trpc } from '@/providers/trpc';
+import { VIP_TABLE } from '../store';
+import Wheel from '../components/Wheel';
+
+export default function Home() {
+  const { t } = useTranslation();
+  const [showAnnouncement, setShowAnnouncement] = useState(() => {
+    return localStorage.getItem('corevest_announcement_seen') !== 'true';
+  });
+
+  // Fetch market prices from API
+  const { data: marketCoins = [] } = trpc.marketPrice.list.useQuery(undefined, {
+    staleTime: 1000 * 60,
+    refetchInterval: 1000 * 30,
+  });
+
+  const [animatedPrices, setAnimatedPrices] = useState<number[]>([]);
+
+  // Sync animated prices when market coins load
+  useEffect(() => {
+    if (marketCoins.length > 0 && animatedPrices.length === 0) {
+      setAnimatedPrices(marketCoins.map((c: { basePrice: string | number }) => Number(c.basePrice)));
+    }
+  }, [marketCoins]);
+
+  const dismissAnnouncement = () => {
+    setShowAnnouncement(false);
+    localStorage.setItem('corevest_announcement_seen', 'true');
+  };
+
+  // Fetch profile from tRPC
+  const { data: profile } = trpc.profile.me.useQuery(undefined, {
+    staleTime: 1000 * 30,
+    retry: false,
+  });
+
+  // Auto-create referral relationship if ref code exists in localStorage
+  const referralMutation = trpc.referral.create.useMutation();
+  useEffect(() => {
+    const refCode = localStorage.getItem('corevest_ref_by');
+    if (profile && refCode && !profile.referredBy) {
+      referralMutation.mutate(
+        { referralCode: refCode },
+        {
+          onSuccess: () => {
+            localStorage.removeItem('corevest_ref_by');
+          },
+          onError: () => {
+            localStorage.removeItem('corevest_ref_by');
+          },
+        }
+      );
+    }
+  }, [profile]);
+
+  // Calculate VIP level from investment
+  const currentVip = useMemo(() => {
+    if (!profile) return 0;
+    const investment = Number(profile.investment);
+    for (let i = VIP_TABLE.length - 1; i >= 0; i--) {
+      if (investment >= VIP_TABLE[i].min) return VIP_TABLE[i].level;
+    }
+    return 0;
+  }, [profile]);
+
+  const nextVip = useMemo(() => {
+    return VIP_TABLE.find(v => v.level === currentVip + 1);
+  }, [currentVip]);
+
+  // Simulate live prices
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAnimatedPrices(prev =>
+        prev.map((p) => {
+          const change = (Math.random() - 0.5) * p * 0.002;
+          return Math.max(0, p + change);
+        })
+      );
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!profile) return null;
+
+  return (
+    <Layout>
+      {/* ─── Announcement Popup ─── */}
+      {showAnnouncement && (
+        <div
+          className="relative mb-3 animate-fade-in"
+          style={{
+            border: '1px solid rgba(255,215,0,0.25)',
+            borderRadius: '18px',
+            padding: '20px',
+            background: 'radial-gradient(circle at 30% 20%, rgba(255,215,0,0.12), transparent 50%), radial-gradient(circle at 80% 80%, rgba(255,165,0,0.08), transparent 40%), linear-gradient(135deg, rgba(5,9,20,0.95), rgba(15,10,5,0.95))',
+            boxShadow: '0 8px 32px rgba(255,215,0,0.1)',
+          }}
+        >
+          {/* Close button */}
+          <button
+            onClick={dismissAnnouncement}
+            className="absolute top-3 right-3 grid place-items-center rounded-full transition-all hover:scale-110"
+            style={{
+              width: '28px',
+              height: '28px',
+              background: 'rgba(255,255,255,0.08)',
+              color: '#8fa5b8',
+            }}
+          >
+            <X size={14} />
+          </button>
+
+          <div className="pr-6">
+            <h3
+              className="text-base font-extrabold mb-3"
+              style={{ color: '#FFD700' }}
+            >
+              <Gift size={18} className="inline mr-1" />
+              &#x1F389; &#x1F3A1; CARK AKTIF! &#x1F3A1; &#x1F389;
+            </h3>
+
+            <p className="text-sm font-bold text-white mb-2">
+              1.000$&apos;a kadar hediye bonus kazanma fırsatı sizi bekliyor!
+            </p>
+
+            <p className="text-xs mb-3" style={{ color: '#a9bccf' }}>
+              Sans carkini cevirin ve birbirinden degerli ödülleri kazanma şansını yakalayın. &#x1F680;
+            </p>
+
+            <div
+              className="rounded-xl p-3 mb-3"
+              style={{
+                background: 'rgba(255,215,0,0.06)',
+                border: '1px solid rgba(255,215,0,0.12)',
+              }}
+            >
+              <p className="text-xs font-bold mb-2" style={{ color: '#FFD700' }}>
+                &#x1F381; Kampanya Kuralları:
+              </p>
+              <ul className="space-y-1">
+                {[
+                  'Her 100$ yatırım için 1 SPIN hakki kazanırsınız.',
+                  'Davet ettiğiniz bir üyenin 100$ veya üzeri yatırım yapması durumunda 1 ek SPIN hakki elde edersiniz.',
+                  'Ne kadar çok yatırım ve davet, o kadar çok çevirme hakki!',
+                ].map((rule, i) => (
+                  <li key={i} className="text-xs flex items-start gap-2" style={{ color: '#c8d6e5' }}>
+                    <span style={{ color: '#10b981' }}>&#x2705;</span>
+                    <span>{rule}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <p className="text-xs mb-3" style={{ color: '#8fa5b8' }}>
+              &#x1F340; Şansınızı deneyin, sürpriz bonusları kaçirmayin!
+            </p>
+
+            <p className="text-xs font-bold mb-4" style={{ color: '#FFD700' }}>
+              &#x1F3A1; Çark sizi bekliyor! &#x1F680; CoreVest ile kazanmaya devam edin.
+            </p>
+
+            <button
+              onClick={dismissAnnouncement}
+              className="btn-primary"
+              style={{ minHeight: '42px', fontSize: '14px' }}
+            >
+              Tamam
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-3">
+        {/* Welcome Banner */}
+        <div
+          className="relative overflow-hidden animate-fade-in"
+          style={{
+            border: '1px solid rgba(248,251,255,0.11)',
+            borderRadius: '18px',
+            padding: '22px',
+            background: 'radial-gradient(circle at 76% 22%, rgba(255,215,0,0.15), transparent 26%), radial-gradient(circle at 92% 84%, rgba(255,165,0,0.1), transparent 28%), linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))',
+            boxShadow: '0 22px 60px rgba(0,0,0,0.32)',
+          }}
+        >
+          <div className="relative z-10">
+            <div className="status-badge mb-3">
+              <Crown size={14} />
+              {currentVip === 0 ? 'VIP 0' : `VIP ${currentVip}`} - {t('home.vipStatus')}
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-1">{t('home.welcome')}</h1>
+            <p className="text-sm max-w-md" style={{ color: '#a9bccf' }}>
+              {currentVip === 0 ? t('home.upgradeVip') : t('home.welcomeText')}
+            </p>
+            {nextVip && (
+              <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: '#8fa5b8' }}>
+                <ChevronRight size={14} style={{ color: '#FFD700' }} />
+                {t('home.nextVip')}: ${nextVip.min} ({t(`vipLevels.vip${nextVip.level}`)})
+              </div>
+            )}
+          </div>
+          <div className="absolute right-[-20px] bottom-[-40px] rounded-full" style={{ width: '130px', height: '130px', border: '1px solid rgba(255,215,0,0.15)', transform: 'rotate(-18deg)' }}>
+            <span className="absolute rounded-full" style={{ top: '22px', left: '34px', width: '8px', height: '8px', background: '#FFD700', boxShadow: '0 0 14px rgba(255,215,0,0.7)' }} />
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="glass-card">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="grid place-items-center rounded-xl" style={{ width: '38px', height: '38px', color: '#FFD700', background: 'rgba(255,215,0,0.1)' }}>
+                <MousePointerClick size={18} />
+              </div>
+            </div>
+            <span className="text-xs font-medium" style={{ color: '#8fa5b8' }}>{t('home.totalClicks')}</span>
+            <strong className="block text-xl text-white mt-1">{profile.totalClicks}</strong>
+          </div>
+          <div className="glass-card">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="grid place-items-center rounded-xl" style={{ width: '38px', height: '38px', color: '#FFD700', background: 'rgba(255,215,0,0.1)' }}>
+                <DollarSign size={18} />
+              </div>
+            </div>
+            <span className="text-xs font-medium" style={{ color: '#8fa5b8' }}>{t('home.totalEarnings')}</span>
+            <strong className="block text-xl mt-1" style={{ color: '#FFD700' }}>${Number(profile.totalEarned).toFixed(2)}</strong>
+          </div>
+          <div className="glass-card">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="grid place-items-center rounded-xl" style={{ width: '38px', height: '38px', color: '#FFD700', background: 'rgba(255,215,0,0.1)' }}>
+                <Wallet size={18} />
+              </div>
+            </div>
+            <span className="text-xs font-medium" style={{ color: '#8fa5b8' }}>{t('home.currentInvestment')}</span>
+            <strong className="block text-xl text-white mt-1">${Number(profile.investment).toLocaleString()}</strong>
+          </div>
+          <div className="glass-card">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="grid place-items-center rounded-xl" style={{ width: '38px', height: '38px', color: '#FFD700', background: 'rgba(255,215,0,0.1)' }}>
+                <Crown size={18} />
+              </div>
+            </div>
+            <span className="text-xs font-medium" style={{ color: '#8fa5b8' }}>{t('home.currentLevel')}</span>
+            <strong className="block text-xl mt-1" style={{ color: '#FFD700' }}>{`VIP ${currentVip}`}</strong>
+          </div>
+        </div>
+
+        {/* Wheel of Fortune */}
+        <Wheel />
+
+        {/* Market Prices */}
+        <div className="glass-card">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-base font-bold text-white">{t('home.marketPrices')}</h2>
+              <p className="text-xs" style={{ color: '#8fa5b8' }}>{t('home.marketSubtitle')}</p>
+            </div>
+            <div className="status-badge text-[10px]">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              LIVE
+            </div>
+          </div>
+          <div className="grid gap-2">
+            {marketCoins.length === 0 && (
+              <p className="text-xs text-center py-4" style={{ color: '#5a6a7a' }}>Piyasa verisi yukleniyor...</p>
+            )}
+            {marketCoins.map((coin: { id: number; symbol: string; name: string; basePrice: string | number; change: string | number; color: string }, i: number) => {
+              const isUp = Number(coin.change) >= 0;
+              const livePrice = animatedPrices[i] ?? Number(coin.basePrice);
+              return (
+                <div key={coin.symbol} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(248,251,255,0.05)' }}>
+                  <div className="grid place-items-center rounded-lg font-extrabold text-xs shrink-0" style={{ width: '40px', height: '40px', background: `${coin.color}18`, color: coin.color }}>{coin.symbol.slice(0, 2)}</div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-bold text-white block">{coin.name}</span>
+                    <span className="text-xs" style={{ color: '#8fa5b8' }}>{coin.symbol}</span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-sm font-bold text-white block">${livePrice < 1 ? livePrice.toFixed(4) : livePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-xs font-semibold flex items-center justify-end gap-1" style={{ color: isUp ? '#10b981' : '#ef4444' }}>{isUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{isUp ? '+' : ''}{Number(coin.change).toFixed(2)}%</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </Layout>
+  );
+}
